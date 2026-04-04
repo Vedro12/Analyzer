@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloud Analyzer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="container">
+  
+  <div id="header">
+    <span>☁ Cloud Analyzer</span>
+    <button id="reset-btn" title="Все данные чата будут удалены и восстановить их будет невозможно!">Обновить чат</button>
+  </div>
+
+  <div id="token-container">
+    <div class="password">
+      <input type="password" id="iam-token-input" placeholder="Введите Oauth-токен">
+      <span class="password-control"></span>
+    </div>
+    <input type="text" id="folder-id-input" placeholder="Введите ID каталога">
+    <button id="save-token-btn">Сохранить токен</button>
+  </div>
+
+  <div id="chat-box"></div>
+
+  <div id="controls">
+    <div class="input-row">
+      <input type="text" id="user-input" placeholder="Введите сообщение...">
+      <button id="send-btn">➤</button>
+    </div>
+    <button id="collect-btn">Собрать данные о ресурсах</button>
+  </div>
+
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
