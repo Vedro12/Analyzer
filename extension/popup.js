@@ -1,191 +1,69 @@
 const chatBox = document.getElementById("chat-box");
-const input = document.getElementById("user-input");
+const userInput = document.getElementById("user-input");
 const sendBtn = document.getElementById("send-btn");
 const collectBtn = document.getElementById("collect-btn");
 const resetBtn = document.getElementById("reset-btn");
 const tokenInput = document.getElementById("iam-token-input");
 const folderInput = document.getElementById("folder-id-input");
 const saveTokenBtn = document.getElementById("save-token-btn");
-
-let chatHistory = [];
-let isCollected = false;
-let iamToken = null;
-let folderId = null;
+const tokenError = document.getElementById("token-error");
+const folderError = document.getElementById("folder-error");
 
 
 
-async function saveState() {
-    await chrome.storage.local.set({ chatHistory, isCollected });
-}
+/* =========================
+   STATE (ONLY UI)
+========================= */
 
-function scrollChat() {
-    chatBox.scrollTop = chatBox.scrollHeight;
-}
+let oauthToken = localStorage.getItem("iamToken") || "";
+let folderId = localStorage.getItem("folderId") || "";
 
-async function sendTokenToBackend() {
-    try {
-        await fetch("http://127.0.0.1:8000/set-token", {
-            method: "POST",
-            body: JSON.stringify({ token: iamToken, folder_id: folderId })
-        });
+/* =========================
+   INIT
+========================= */
 
-        chatBox.innerHTML += `<div><i>Токен сохранён</i></div>`;
-        scrollChat();
-    } catch (err) {
-        chatBox.innerHTML += `<div style="color:red;"><b>AI:</b> Ошибка отправки токена: ${err}</div>`;
-        scrollChat();
-    }
-}
+tokenInput.value = oauthToken;
+folderInput.value = folderId;
 
-function addMessage(text, role) {
-    const msg = document.createElement("div");
-    msg.classList.add("message");
-    msg.classList.add(role === "user" ? "user-message" : "ai-message");
+/* =========================
+   INPUT SYNC (localStorage only)
+========================= */
 
-    msg.innerHTML = renderMarkdown(text);
-
-    chatBox.appendChild(msg);
-    scrollChat();
-}
-
-window.addEventListener("load", async () => {
-    const data = await chrome.storage.local.get(["chatHistory", "isCollected", "iamToken", "folderId"]);
-    chatHistory = data.chatHistory || [];
-    isCollected = data.isCollected || false;
-    iamToken = data.iamToken || "";
-    folderId = data.folderId || "";
-
-    tokenInput.value = iamToken;
-    folderInput.value = folderId;
-    
-    chatHistory.forEach(msg => {
-        chatBox.innerHTML += `<div><b>${msg.role === "user" ? "Вы" : "AI"}:</b> ${msg.content}</div>`;
-    });
-    scrollChat();
+tokenInput.addEventListener("input", () => {
+    oauthToken = tokenInput.value.trim();
+    localStorage.setItem("iamToken", oauthToken);
+    tokenError.textContent = validateToken(oauthToken);
 });
 
-async function sendMessage() {
-    const message = input.value.trim();
-    if (!message) return;
-    chatBox.innerHTML += `<div><b>Вы:</b> ${message}</div>`;
-    input.value = "";
-    scrollChat();
-
-    if (!isCollected) {
-        if (iamToken && folderId) {
-            // Токен есть — собираем данные
-            chatBox.innerHTML += `<div><b>AI:</b> <i>Собираю данные для анализа. Пожалуйста, подождите...</i></div>`;
-            scrollChat();
-
-            try {
-                await fetch("http://127.0.0.1:8000/collect", { method: "POST" });
-                isCollected = true;
-                await saveState();
-                chatBox.innerHTML += `<div><b>AI:</b> <i>Данные собраны</i></div>`;
-                scrollChat();
-            } catch (err) {
-                chatBox.innerHTML += `<div style="color:red;"><b>AI:</b> Ошибка сбора данных: ${err}</div>`;
-                scrollChat();
-            }
-        } else {
-            chatBox.innerHTML += `<div style="color:orange;"><b>AI:</b>Для анализа инфраструктуры нужны IAM токен и folder ID. Общение возможно, но рекомендации будут ограничены.</div>`;
-            scrollChat();
-        }
-    }
-
-    try {
-        const response = await fetch("http://127.0.0.1:8000/ai-chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message, history: chatHistory })
-        });
-        const data = await response.json();
-        chatHistory = data.history;
-        chatBox.innerHTML += `<div><b>AI:</b> ${data.answer}</div>`;
-        scrollChat();
-        await saveState();
-    } catch (err) {
-        chatBox.innerHTML += `<div style="color:red;"><b>AI:</b> Ошибка: ${err}</div>`;
-        scrollChat();
-    }
-}
-
-sendBtn.addEventListener("click", sendMessage);
-input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-        sendMessage();
-        e.preventDefault();
-    }
-});
-
-collectBtn.addEventListener("click", async () => {
-    if (!iamToken || !folderId) {
-        chatBox.innerHTML += `<div style="color:orange;"><b>AI:</b> Для сбора данных нужен Oauth-токен и ID каталога. Пожалуйста, введите их выше.</div>`;
-        scrollChat();
-        return;
-    }
-
-    chatBox.innerHTML += `<div><b>AI:</b> <i>Собираю данные для анализа. Пожалуйста, подождите...</i></div>`;
-    scrollChat();
-
-    if (isCollected) {
-        try {
-            await fetch("http://127.0.0.1:8000/clear-data", { method: "POST" });  
-            isCollected = false;
-            await saveState();
-            chatBox.innerHTML += `<div><i>Старые данные очищены</i></div>`;
-            scrollChat();
-        } catch (err) {
-            chatBox.innerHTML += `<div style="color:red;"><b>AI:</b> Ошибка очистки старых данных: ${err}</div>`;
-            scrollChat();
-            return;
-        }
-    }
-
-    try {
-        await fetch("http://127.0.0.1:8000/collect", { method: "POST" });
-        isCollected = true;
-        await saveState();
-        chatBox.innerHTML += `<div><b>AI:</b> <i>Данные собраны</i></div>`;
-        scrollChat();
-    } catch (err) {
-        chatBox.innerHTML += `<div style="color:red;"><b>AI:</b> Ошибка сбора данных: ${err}</div>`;
-        scrollChat();
-    }
-});
-
-resetBtn.addEventListener("click", async () => {
-    try {
-        await fetch("http://127.0.0.1:8000/clear-data", { method: "POST" });
-    } catch (err) {
-        chatBox.innerHTML += `<div style="color:red;"><b>AI:</b> <i>Ошибка обновления чата: ${err}</i></div>`;
-        scrollChat();
-    }
-
-    chatHistory = [];
-    chatBox.innerHTML = "";
-    isCollected = false;
-    await chrome.storage.local.clear();
-
-    chatBox.innerHTML += `<div><i>Чат обновлён</i></div>`;
-    scrollChat();
-});
-
-saveTokenBtn.addEventListener("click", async () => {
-    iamToken = tokenInput.value.trim();
+folderInput.addEventListener("input", () => {
     folderId = folderInput.value.trim();
-
-    if (!iamToken || !folderId) {
-        alert("Введите токен и folder ID!");
-        return;
-    }
-
-    await chrome.storage.local.set({ iamToken, folderId });
-    sendTokenToBackend();
-    scrollChat();
+    localStorage.setItem("folderId", folderId);
+    folderError.textContent = validateFolderId(folderId);
 });
 
-document.addEventListener("click", function (e) {
+/* =========================
+   VALIDATION
+========================= */
+
+function validateToken(token) {
+    if (!token) return "Введите токен";
+    if (token.length < 50) return "Токен слишком короткий";
+    if (/\s/.test(token)) return "Токен не должен содержать пробелы";
+    return "";
+}
+
+function validateFolderId(id) {
+    if (!id) return "Введите идентификатор каталога";
+    if (!/^[a-z0-9]+$/.test(id)) return "Только латиница и цифры";
+    if (id.length < 20 || id.length > 25) return "Неверная длина";
+    return "";
+}
+
+/* =========================
+   PASSWORD TOGGLE
+========================= */
+
+document.addEventListener("click", (e) => {
     if (e.target.classList.contains("password-control")) {
         const input = document.getElementById("iam-token-input");
 
@@ -196,5 +74,304 @@ document.addEventListener("click", function (e) {
             input.type = "password";
             e.target.classList.remove("view");
         }
+    }
+});
+
+/* =========================
+   UI
+========================= */
+
+function scrollChat() {
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function clearChatUI() {
+    chatBox.innerHTML = `
+        <div class="welcome-message">
+            <div class="avatar ai-avatar"></div>
+            <div class="welcome-content">
+                <h3>Привет! Я Cloud Assistant</h3>
+                <p>Задайте вопрос или соберите данные.</p>
+            </div>
+        </div>
+    `;
+}
+
+/* =========================
+   ENHANCE CODE BLOCKS (как на сайте)
+========================= */
+
+function enhanceCodeBlocks(container) {
+    const blocks = container.querySelectorAll("pre");
+    
+    blocks.forEach((pre) => {
+        const code = pre.querySelector("code");
+        if (!code) return;
+        
+        // Определяем язык из class="language-js"
+        let lang = "code";
+        const match = code.className?.match(/language-(\w+)/);
+        if (match) lang = match[1];
+        
+        // Бейдж языка
+        const langLabel = document.createElement("div");
+        langLabel.className = "code-lang";
+        langLabel.textContent = lang;
+        
+        // Кнопка копирования
+        const btn = document.createElement("button");
+        btn.className = "copy-btn";
+        btn.onclick = async () => {
+            await navigator.clipboard.writeText(code.innerText);
+            btn.classList.add("copied");
+            setTimeout(() => btn.classList.remove("copied"), 1200);
+        };
+        
+        pre.style.position = "relative";
+        pre.appendChild(langLabel);
+        pre.appendChild(btn);
+    });
+}
+
+/* =========================
+   MESSAGE
+========================= */
+
+marked.setOptions({
+    breaks: true,     
+    gfm: true       
+});
+
+function addMessage(text, role) {
+    const messageDiv = document.createElement("div");
+    messageDiv.className = `message ${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = `avatar ${role === "user" ? "user-avatar" : "ai-avatar"}`;
+
+    const content = document.createElement("div");
+    content.className = "message-content";
+
+    const rawHtml = marked.parse(text);
+
+    const safeHtml = DOMPurify.sanitize(rawHtml);
+
+    content.innerHTML = safeHtml;
+    enhanceCodeBlocks(content);
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(content);
+
+    chatBox.appendChild(messageDiv);
+    scrollChat();
+}
+
+
+/* =========================
+   SEND MESSAGE
+========================= */
+
+async function sendMessage() {
+    
+    sendBtn.disabled = true;
+    const message = userInput.value.trim();
+    if (!message) return;
+
+    userInput.value = "";
+    
+    addMessage(message, "user");
+    addLoadingMessage();
+
+    try {
+        const res = await fetch("http://127.0.0.1:8000/ai-chat", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                message,
+                token: oauthToken,
+                folder_id: folderId
+            })
+        });
+
+        const data = await res.json();
+        addMessage(data.answer, "ai");
+
+    } catch (e) {
+        addMessage("Ошибка: " + e.message, "ai");
+    }
+    
+    removeLoadingMessage();
+    
+    sendBtn.disabled = false;
+}
+
+function addLoadingMessage() {
+    const messageDiv = document.createElement("div");
+    messageDiv.className = "message ai loading";
+    messageDiv.id = "loading-msg";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar ai-avatar";
+
+    const content = document.createElement("div");
+    content.className = "message-content";
+
+    content.innerHTML = `
+        <div class="typing">
+            <span></span><span></span><span></span>
+        </div>
+    `;
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(content);
+
+    chatBox.appendChild(messageDiv);
+    scrollChat();
+}
+
+function removeLoadingMessage() {
+    const el = document.getElementById("loading-msg");
+    if (el) el.remove();
+}
+
+
+
+/* =========================
+   COLLECT (NO LOCAL STATE)
+========================= */
+
+async function collectData() {
+    if (!oauthToken || !folderId) {
+        addMessage("Нужен токен и folder ID", "ai");
+        return;
+    }
+
+    try {
+        await fetch("http://127.0.0.1:8000/collect", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                token: oauthToken,
+                folder_id: folderId
+            })
+        });
+
+        addMessage("Данные собраны", "ai");
+
+    } catch (e) {
+        addMessage("Ошибка: " + e.message, "ai");
+    }
+}
+
+/* =========================
+   SAVE TOKEN
+========================= */
+
+async function saveToken() {
+    const tokenErr = validateToken(oauthToken);
+    const folderErr = validateFolderId(folderId);
+
+    tokenError.textContent = tokenErr;
+    folderError.textContent = folderErr;
+
+    if (tokenErr || folderErr) return;
+
+    try {
+        const res = await fetch("http://127.0.0.1:8000/set-token", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                token: oauthToken,
+                folder_id: folderId
+            })
+        });
+
+        const data = await res.json();
+
+        addMessage(data.message || "Токен сохранён", "ai");
+
+    } catch (e) {
+        addMessage("Ошибка: " + e.message, "ai");
+    }
+}
+
+/* =========================
+   RESET CHAT (OLD STYLE CONFIRM)
+========================= */
+
+let resetConfirm = false;
+
+resetBtn.onclick = async () => {
+    if (!resetConfirm) {
+        resetConfirm = true;
+        resetBtn.classList.add("confirm");
+
+        setTimeout(() => {
+            resetConfirm = false;
+            resetBtn.classList.remove("confirm");
+        }, 1500);
+
+        return;
+    }
+
+    resetConfirm = false;
+    resetBtn.classList.remove("confirm");
+
+    await fetch("http://127.0.0.1:8000/clear-data", {
+        method: "POST"
+    });
+
+    localStorage.removeItem("iamToken");
+    localStorage.removeItem("folderId");
+
+    oauthToken = "";
+    folderId = "";
+
+    tokenInput.value = "";
+    folderInput.value = "";
+
+    tokenError.textContent = "";
+    folderError.textContent = "";
+
+    clearChatUI();
+    addMessage("История чата очищена", "ai");
+};
+
+/* =========================
+   EVENTS
+========================= */
+
+sendBtn.onclick = sendMessage;
+collectBtn.onclick = collectData;
+saveTokenBtn.onclick = saveToken;
+
+
+userInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+
+/* =========================
+   INIT
+========================= */
+
+window.addEventListener("load", async () => {
+    clearChatUI();
+    
+    try {
+        const res = await fetch("http://127.0.0.1:8000/history");
+        const data = await res.json();
+
+        // ожидаем: [{role: "user/ai", content: "..."}]
+        if (data.history && Array.isArray(data.history)) {
+            data.history.forEach(msg => {
+                addMessage(msg.content, msg.role);
+            });
+        }
+
+    } catch (e) {
+        console.error("Failed to load history:", e);
     }
 });

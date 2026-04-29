@@ -7,34 +7,68 @@
 </head>
 <body>
 
-<div id="container">
-  
-  <div id="header">
-    <span>☁ Cloud Analyzer</span>
-    <button id="reset-btn" title="Все данные чата будут удалены и восстановить их будет невозможно!">Обновить чат</button>
-  </div>
+  <div id="container">
+    
+    <header id="header">
+      <div class="logo">Cloud Analyzer</div>
+      <div class="header-actions">
+        <button id="help-btn" class="icon-btn" title="Помощь"></button>
+        <button id="reset-btn" class="icon-btn" title="Очистить историю чата"></button>
+      </div>
+    </header>
 
-  <div id="token-container">
-    <div class="password">
-      <input type="password" id="iam-token-input" placeholder="Введите Oauth-токен">
-      <span class="password-control"></span>
+    <div id="token-container">
+      <div class="input-group">
+        <label for="iam-token-input">OAuth-токен</label>
+        <div class="password">
+          <input type="password" id="iam-token-input" placeholder="Введите OAuth-токен">
+          <span class="password-control"></span>
+        </div>
+      </div>
+      <div class="error-text" id="token-error"></div>
+
+      <div class="input-group">
+        <label for="folder-id-input">Идентификатор каталога</label>
+        <input type="text" id="folder-id-input" placeholder="Введите ID каталога">
+      </div>
+      <div class="error-text" id="folder-error"></div>
+      
+      <button id="save-token-btn" class="sidebar-btn secondary">Сохранить</button>
+      <button id="collect-btn" class="sidebar-btn primary collect-btn">
+        <span class="btn-icon"></span>
+        Собрать данные
+      </button>
     </div>
-    <input type="text" id="folder-id-input" placeholder="Введите ID каталога">
-    <button id="save-token-btn">Сохранить токен</button>
-  </div>
 
-  <div id="chat-box"></div>
-
-  <div id="controls">
-    <div class="input-row">
-      <input type="text" id="user-input" placeholder="Введите сообщение...">
-      <button id="send-btn">➤</button>
+    <div id="chat-box">
+      <div class="welcome-message">
+        <div class="avatar ai-avatar"></div>
+        <div class="welcome-content">
+          <h3>Привет! Я ваш AI-ассистент</h3>
+          <p>Задайте мне любой вопрос или попросите о помощи — я с радостью отвечу.</p>
+        </div>
+      </div>
     </div>
-    <button id="collect-btn">Собрать данные о ресурсах</button>
+
+    <div id="input-area">
+      <div class="chat-input-wrapper">
+        <textarea
+          id="user-input"
+          class="chat-input"
+          placeholder="Напишите сообщение..."
+          rows="1"
+        ></textarea>
+        <button id="send-btn" class="send-button">
+          <span>➤</span>
+        </button>
+      </div>
+      <p class="disclaimer">AI может допускать ошибки. Проверяйте важную информацию.</p>
+    </div>
+
   </div>
 
-</div>
-
-<script src="popup.js"></script>
+  <script src="lib/purify.min.js"></script>
+  <script src="lib/marked.min.js"></script>
+  <script src="popup.js"></script>
 </body>
 </html>

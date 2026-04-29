@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">Cloud Analyzer</h1>
+            </div>
+            <div class="sidebar-content">
+                <div class="settings-section">
+                    <div class="input-group">
+                        <label for="iam-token-input">OAuth-токен</label>
+                        <div class="password">
+                            <input type="password" id="iam-token-input" placeholder="Введите OAuth-токен">
+                            <span class="password-control"></span>
+                        </div>
+                        <div class="error-text" id="token-error"></div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="folder-id-input">Идентификатор каталога</label>
+                        <input type="text" id="folder-id-input" placeholder="Введите ID каталога">
+                        <div class="error-text" id="folder-error"></div>
+                    </div>
+
+                    <button id="save-token-btn" class="sidebar-btn secondary">
+                        Сохранить
+                    </button>
+                </div>
+
+                <button id="collect-btn" class="sidebar-btn primary collect-btn">
+                    Собрать данные
+                </button>
+
+                <button id="restart-onboarding-btn" class="sidebar-btn primary restart-btn">
+                    Повторить обучение
+                </button>
+            </div>
+            <div class="sidebar-footer">
+                <span class="status-indicator"></span>
+                <a 
+                    href="https://status.yandex.cloud/ru/dashboard" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    class="status-link"
+                >
+                    Инциденты на платформе
+                </a>
+            </div>
+        </aside>
+        
+        <main class="chat-container">
+            <div id="overlay" class="mobile-overlay"></div>
+            <header class="chat-header">
+                <button id="menu-btn" class="menu-btn">
+                    <span></span>
+                </button>
+                <div class="chat-header-left">
+                    <h2>Чат с AI</h2>
+                    <p>Ассистент готов отвечать на ваши вопросы</p>
+                </div>
+
+                <button id="reset-btn" class="trash-button" title="Очистить историю чата"></button>
+
+            </header>
+                        
+            <div id="chat-box" class="chat-box">
+                <div class="welcome-message">
+                    <div class="avatar ai-avatar"></div>
+                    <div class="welcome-content">
+                        <h3>Привет! Я ваш AI-ассистент</h3>
+                        <p>Задайте мне любой вопрос или попросите о помощи — я с радостью отвечу.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <textarea
+                        id="user-input"
+                        class="chat-input"
+                        placeholder="Напишите сообщение..."
+                        rows="1"
+                    ></textarea>
+                    <button id="send-btn" class="send-button">
+                        <span>➤</span>
+                    </button>
+                </div>
+                <p class="disclaimer">AI может допускать ошибки. Проверяйте важную информацию.</p>
+            </div>
+        </main>
+    </div>
+    <div id="onboarding-modal" class="onboarding hidden">
+        <div class="onboarding-card">
+            <div class="onboarding-progress">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+            <!-- SLIDE 1 -->
+            <div class="onboarding-slide active">
+                <h2>Добро пожаловать!</h2>
+                <p>
+                    Это инструмент анализа облачных ресурсов с помощью <b>AI-ассистента</b>.
+                    Она помогает получать структурированные рекомендации и анализ.
+                </p>
+                <div class="onboarding-media">
+                    <img src="/static/img/first.jpg">
+                </div>
+                <p>
+                    Для получения персонализированных рекомендаций рекомендуется указать <b>OAuth-токен</b> и <b>ID каталога</b>.
+                </p>
+            </div>
+
+            <!-- SLIDE 2 -->
+            <div class="onboarding-slide">
+                <h2>Получение OAuth-токена</h2>
+                <div class="onboarding-block">
+                    <ol>
+                        <li>
+                            Перейдите по
+                            <a href="https://oauth.yandex.ru/authorize?response_type=token&client_id=6be758479b5a4d4f9df068acee31dfca" target="_blank">
+                                ссылке
+                            </a>
+                        </li>
+                        <li>Нажмите <b>«Разрешить»</b></li>
+                        <li>Скопируйте полученный токен</li>
+                        <li>Вставьте его в поле <b>«OAuth-токен»</b></li>
+                        <div class="onboarding-media">
+                            <img src="/static/img/oauth.png">
+                        </div>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- SLIDE 3 -->
+            <div class="onboarding-slide">
+                <h2>Получение идентификатора каталога</h2>
+                <div class="onboarding-block">
+                    <ol>
+                        <li>
+                            Откройте 
+                            <a href="https://console.cloud.yandex.ru" target="_blank">
+                                консоль облака
+                            </a>
+                        </li>
+                        <li>Выберите нужный каталог</li>
+                        <li>Скопируйте идентификатор под названием каталога</li>
+                        <div class="onboarding-media">
+                            <img src="/static/img/folder2.png">
+                        </div>
+                        <li>Вставьте его в поле <b>«Идентификатор каталога»</b></li>
+                    </ol>
+                </div>
+                
+                <p>Также идентификатор можно получить из <b>URL страницы</b>:</p>
+                    <code>
+                        https://console.yandex.cloud/folders/&lt;folder_id&gt;
+                    </code>
+            </div>
+
+            <!-- SLIDE 4 -->
+            <div class="onboarding-slide">
+                <h2>Сбор данных</h2>
+                <p>
+                    Нажмите кнопку <b>«Собрать данные»</b>, чтобы загрузить информацию о ресурсах.
+                </p>
+                <div class="onboarding-media">
+                    <img src="/static/img/collect.png">
+                </div>
+            </div>
+
+            <!-- SLIDE 5 -->
+            <div class="onboarding-slide">
+                <h2>Готово!</h2>
+                <p>Начните диалог с <b>AI-ассистентом</b>.</p>
+                <div class="onboarding-media">
+                    <img src="/static/img/start.png">
+                </div>
+            </div>
+
+            <!-- controls -->
+            <div class="onboarding-controls">
+                <button id="prev-slide">Назад</button>
+                <button id="next-slide">Далее</button>
+            </div>
+
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

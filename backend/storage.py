@@ -1,5 +1,3 @@
-# backend/storage.py
-
 import json
 from pathlib import Path
 
@@ -7,6 +5,7 @@ def save_data(data, filename: str):
     """
     Сохраняет данные в JSON файл.
     Если файл существует, добавляет новые записи.
+    Если data — словарь, превращаем в список из одного элемента.
     """
     if isinstance(data, dict):
         data = [data] 
