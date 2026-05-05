@@ -1,19 +1,20 @@
+# backend/main.py
 import asyncio
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from pathlib import Path
 from backend.ai.ai_agent import run_ai_chat
-from backend.storage import load_json_file, save_data
 from backend.collectors.collector import (
     collect_all_compute_data,
     collect_all_s3_data,
     collect_all_vpc_data
 )
-from backend import config
 import aiohttp
 from fastapi.middleware.cors import CORSMiddleware
+from backend.redis_client import get_auth, get_data, get_history, set_auth, set_data, add_message, clear_auth, clear_data, clear_history 
+from backend.helpers import validate_token_request, get_iam_token, check_folder_exists
+
 
 app = FastAPI()
 
@@ -25,10 +26,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class ChatMessage(BaseModel):
-    message: str
+class SessionRequest(BaseModel):
+    session_id: str
 
-chat_history = []
+class TokenRequest(BaseModel):
+    session_id: str
+    token: str
+    folder_id: str
+
+class ChatMessage(BaseModel):
+    session_id: str
+    message: str
 
 @app.get("/")
 def home():
@@ -37,98 +45,102 @@ def home():
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 @app.post("/ai-chat")
-def ai_chat(msg: ChatMessage):
-    global chat_history
+def ai_chat(req: ChatMessage):
+    session_id = (req.session_id or "").strip()
+    user_message = (req.message or "").strip()
 
-    data = {
-        "compute": load_json_file("backend/data/compute.json"),
-        "s3": load_json_file("backend/data/s3.json"),
-        "vpc": load_json_file("backend/data/vpc.json")
-    }
+    if not session_id:
+        return {
+            "status": "error",
+            "message": "Не найден ID сессии"
+        }
 
-    answer, updated_history = run_ai_chat(
-        msg.message,
-        data,
-        chat_history
+    if not user_message:
+        return {
+            "status": "error",
+            "message": "Сообщение не может быть пустым"
+        }
+
+    history = get_history(session_id)
+    data = get_data(session_id)
+
+    answer = run_ai_chat(
+        user_input=user_message,
+        data=data,
+        history=history
     )
 
-    chat_history = updated_history
+    add_message(session_id, "user", user_message)
+    add_message(session_id, "assistant", answer)
+
+    updated_history = get_history(session_id)
 
     return {
+        "status": "ok",
         "answer": answer,
-        "history": chat_history
+        "history": updated_history
     }
 
 @app.post("/collect")
-async def collect_info():
-    compute_task = collect_all_compute_data()
-    s3_task = collect_all_s3_data()
-    vpc_task = collect_all_vpc_data()
-    await asyncio.gather(compute_task, s3_task, vpc_task)
-    return {"status": "ok"}
+async def collect_info(req: SessionRequest):
+    auth = get_auth(req.session_id)
+
+    if not auth:
+        return {
+            "status": "error",
+            "message": "Сначала укажите OAuth-токен и идентификатор каталога"
+        }
+
+    iam_token = auth["iam_token"]
+    folder_id = auth["folder_id"]
+
+    compute_task = collect_all_compute_data(iam_token, folder_id)
+    s3_task = collect_all_s3_data(iam_token, folder_id)
+    vpc_task = collect_all_vpc_data(iam_token, folder_id)
+
+    compute, s3, vpc = await asyncio.gather(
+        compute_task,
+        s3_task,
+        vpc_task
+    )
+    data = {
+        "compute": compute,
+        "s3": s3,
+        "vpc": vpc
+    }
+    set_data(req.session_id, data)
+    return {
+        "status": "ok",
+        "message": "Данные инфраструктуры собраны",
+        "data": data
+    }
 
 @app.post("/set-token")
-async def set_token(request: Request):
+async def set_token(req: TokenRequest):
     try:
-        data = await request.json()
-        token = (data.get("token") or "").strip()
-        folder_id = (data.get("folder_id") or "").strip()
-        if not token or not folder_id:
-            return {
-                "status": "error",
-                "message": "Не заполнены поля с OAuth-токеном и идентификатором каталога. Без их указания рекомендации будут общими, без учёта ваших ресурсов"
-            }
-        if len(token) < 50 or " " in token:
-            return {
-                "status": "error",
-                "message": "Некорректная длина OAuth-токена"
-            }
-        if not folder_id.isalnum() or not folder_id.islower():
-            return {
-                "status": "error",
-                "message": "Идентификатор каталога должен содержать только строчные латинские буквы и цифры"
-            }
+        token = (req.token or "").strip()
+        folder_id = (req.folder_id or "").strip()
+        session_id = (req.session_id or "").strip()
 
-        if not (20 <= len(folder_id) <= 25):
-            return {
-                "status": "error",
-                "message": "Некорректная длина идентификатора каталога"
-            }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://iam.api.cloud.yandex.net/iam/v1/tokens",
-                json={"yandexPassportOauthToken": token},
-                timeout=aiohttp.ClientTimeout(total=15)
-            ) as response:
-                if response.status != 200:
-                    return {
-                        "status": "error",
-                        "message": "Невалидный OAuth-токен"
-                    }
-                resp_data = await response.json()
+        error = validate_token_request(token, folder_id, session_id)
+        if error:
+            return {"status": "error", "message": error}
 
-        iam_token = resp_data.get("iamToken")
+        iam_token = await get_iam_token(token)
         if not iam_token:
             return {
                 "status": "error",
-                "message": "Не удалось получить IAM токен"
+                "message": "Невалидный OAuth-токен"
             }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"https://resource-manager.api.cloud.yandex.net/resource-manager/v1/folders/{folder_id}",
-                headers={"Authorization": f"Bearer {iam_token}"}
-            ) as response:
+        folder_ok = await check_folder_exists(iam_token, folder_id)
+        if not folder_ok:
+            return {
+                "status": "error",
+                "message": "Каталог с указанным идентификатором не найден. Пожалуйста, проверьте корректность идентификатора"
+            }
 
-                if response.status != 200:
-                    return {
-                        "status": "error",
-                        "message": "Каталог с указанным идентификатором не найден. Пожалуйста, проверьте корректность идентификатора"
-                    }
-
-        # ===== 6. Сохраняем =====
-        config.iam_token = iam_token
-        config.folder_id = folder_id
+        set_auth(session_id, iam_token, folder_id)
 
         return {
             "status": "ok",
@@ -146,22 +158,39 @@ async def set_token(request: Request):
             "status": "error",
             "message": f"Ошибка: {str(e)}"
         }
+    
+@app.post("/clear-all")
+def clear_all(req: SessionRequest):
+    session_id = (req.session_id or "").strip()
 
-@app.post("/clear-data")
-def clear_data():
-    global chat_history
+    if not session_id:
+        return {
+            "status": "error",
+            "message": "Не найден ID сессии"
+        }
 
-    chat_history = []
+    clear_history(session_id)
+    clear_data(session_id)
+    clear_auth(session_id)
 
-    data_dir = Path("backend/data")
-    for file in data_dir.glob("*.json"):
-        try:
-            file.unlink()
-        except Exception:
-            pass
+    return {
+        "status": "cleared",
+        "message": "Сессия, токен, история и данные очищены"
+    }
 
-    return {"status": "cleared"}
+@app.post("/history")
+def get_history_endpoint(req: SessionRequest):
+    session_id = (req.session_id or "").strip()
 
-@app.get("/history")
-def get_history():
-    return {"history": chat_history}
+    if not session_id:
+        return {
+            "status": "error",
+            "message": "Не найден ID сессии"
+        }
+
+    history = get_history(session_id)
+
+    return {
+        "status": "ok",
+        "history": history
+    }

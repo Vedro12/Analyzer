@@ -1,3 +1,6 @@
+/* =========================
+   EXTENSION (extension/popup.js)
+========================= */
 const chatBox = document.getElementById("chat-box");
 const userInput = document.getElementById("user-input");
 const sendBtn = document.getElementById("send-btn");
@@ -8,8 +11,6 @@ const folderInput = document.getElementById("folder-id-input");
 const saveTokenBtn = document.getElementById("save-token-btn");
 const tokenError = document.getElementById("token-error");
 const folderError = document.getElementById("folder-error");
-
-
 
 /* =========================
    STATE (ONLY UI)
@@ -24,6 +25,23 @@ let folderId = localStorage.getItem("folderId") || "";
 
 tokenInput.value = oauthToken;
 folderInput.value = folderId;
+
+/* =========================
+   SessionControl
+========================= */
+
+function getSessionId() {
+    let sessionId = localStorage.getItem("session_id");
+
+    if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem("session_id", sessionId);
+    }
+
+    return sessionId;
+}
+
+const sessionId = getSessionId();
 
 /* =========================
    INPUT SYNC (localStorage only)
@@ -172,13 +190,17 @@ function addMessage(text, role) {
 ========================= */
 
 async function sendMessage() {
-    
     sendBtn.disabled = true;
+
     const message = userInput.value.trim();
-    if (!message) return;
+
+    if (!message) {
+        sendBtn.disabled = false;
+        return;
+    }
 
     userInput.value = "";
-    
+
     addMessage(message, "user");
     addLoadingMessage();
 
@@ -187,22 +209,25 @@ async function sendMessage() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
-                message,
-                token: oauthToken,
-                folder_id: folderId
+                session_id: sessionId,
+                message
             })
         });
 
         const data = await res.json();
-        addMessage(data.answer, "ai");
+
+        if (data.status !== "ok") {
+            addMessage(data.message || "Ошибка при получении ответа", "ai");
+        } else {
+            addMessage(data.answer, "ai");
+        }
 
     } catch (e) {
         addMessage("Ошибка: " + e.message, "ai");
+    } finally {
+        removeLoadingMessage();
+        sendBtn.disabled = false;
     }
-    
-    removeLoadingMessage();
-    
-    sendBtn.disabled = false;
 }
 
 function addLoadingMessage() {
@@ -247,16 +272,22 @@ async function collectData() {
     }
 
     try {
-        await fetch("http://127.0.0.1:8000/collect", {
+        const res = await fetch("http://127.0.0.1:8000/collect", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
-                token: oauthToken,
-                folder_id: folderId
+                session_id: sessionId
             })
         });
 
-        addMessage("Данные собраны", "ai");
+        const data = await res.json();
+
+        if (data.status !== "ok") {
+            addMessage(data.message || "Ошибка сбора данных", "ai");
+            return;
+        }
+
+        addMessage(data.message || "Данные собраны", "ai");
 
     } catch (e) {
         addMessage("Ошибка: " + e.message, "ai");
@@ -281,12 +312,18 @@ async function saveToken() {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
+                session_id: sessionId,
                 token: oauthToken,
                 folder_id: folderId
             })
         });
 
         const data = await res.json();
+
+        if (data.status !== "ok") {
+            addMessage(data.message || "Ошибка сохранения токена", "ai");
+            return;
+        }
 
         addMessage(data.message || "Токен сохранён", "ai");
 
@@ -317,8 +354,12 @@ resetBtn.onclick = async () => {
     resetConfirm = false;
     resetBtn.classList.remove("confirm");
 
-    await fetch("http://127.0.0.1:8000/clear-data", {
-        method: "POST"
+    await fetch("http://127.0.0.1:8000/clear-all", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+            session_id: sessionId
+        })
     });
 
     localStorage.removeItem("iamToken");
@@ -361,7 +402,13 @@ window.addEventListener("load", async () => {
     clearChatUI();
     
     try {
-        const res = await fetch("http://127.0.0.1:8000/history");
+        const res = await fetch("http://127.0.0.1:8000/history", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                session_id: sessionId
+            })
+        });
         const data = await res.json();
 
         // ожидаем: [{role: "user/ai", content: "..."}]

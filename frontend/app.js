@@ -1,3 +1,6 @@
+/* =========================
+   FRONTEND (frontend/app.js)
+========================= */
 const chatBox = document.getElementById("chat-box");
 const userInput = document.getElementById("user-input");
 const sendBtn = document.getElementById("send-btn");
@@ -15,9 +18,25 @@ const tokenError = document.getElementById("token-error");
 const folderError = document.getElementById("folder-error");
 
 /* =========================
-   INIT INPUTS
+   SessionControl
 ========================= */
 
+function getSessionId() {
+    let sessionId = localStorage.getItem("session_id");
+
+    if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem("session_id", sessionId);
+    }
+
+    return sessionId;
+}
+
+const sessionId = getSessionId();
+
+/* =========================
+   INIT INPUTS
+========================= */
 
 tokenInput.value = oauthToken;
 folderInput.value = folderId;
@@ -151,7 +170,13 @@ window.addEventListener("load", async () => {
     initOnboarding(); 
     
     try {
-        const res = await fetch("http://127.0.0.1:8000/history");
+        const res = await fetch("http://127.0.0.1:8000/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                session_id: sessionId
+            })
+        });
         const data = await res.json();
 
         // ожидаем: [{role: "user/ai", content: "..."}]
@@ -202,11 +227,12 @@ function addLoadingMessage() {
 async function sendMessage() {
     sendBtn.disabled = true;
     const message = userInput.value.trim();
-    if (!message) return;
+    if (!message) {
+        sendBtn.disabled = false;
+        return;
+    }
 
     userInput.value = "";
-
-    // показываем сразу user сообщение
     addMessage(message, "user");
     addLoadingMessage();
 
@@ -215,15 +241,16 @@ async function sendMessage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                message,
-                // отправляем только сообщение, не историю
-                token: oauthToken,
-                folder_id: folderId
+                session_id: sessionId,
+                message
             })
         });
-
         const data = await res.json();
 
+        if (data.status !== "ok") {
+            addMessage(data.message || "Ошибка при получении ответа", "ai");
+            return;
+        }
         // backend возвращает полный ответ + (опционально) историю
         addMessage(data.answer, "ai");
 
@@ -254,12 +281,23 @@ collectBtn.onclick = async () => {
     }
 
     try {
-        await fetch("http://127.0.0.1:8000/collect", {
-            method: "POST"
+        const res = await fetch("http://127.0.0.1:8000/collect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                session_id: sessionId
+            })
         });
 
+        const data = await res.json();
+
+        if (data.status !== "ok") {
+            addMessage(data.message || "Ошибка сбора данных", "ai");
+            return;
+        }
+
         isCollected = true;
-        addMessage("Данные собраны", "ai");
+        addMessage(data.message || "Данные инфраструктуры собраны", "ai");
 
     } catch (e) {
         addMessage("Ошибка: " + e, "ai");
@@ -273,9 +311,21 @@ collectBtn.onclick = async () => {
 resetBtn.onclick = async () => {
     if (!confirm("Все собранные данные о ресурсах и история переписки будут удалены без возможности воостановления. Очистить чат?")) return;
 
-    await fetch("http://127.0.0.1:8000/clear-data", {
-        method: "POST"
+    const res = await fetch("http://127.0.0.1:8000/clear-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            session_id: sessionId
+        })
     });
+
+    const data = await res.json();
+
+    if (data.status !== "cleared") {
+        addMessage(data.message || "Ошибка очистки", "ai");
+        return;
+    }
+    
 
     localStorage.removeItem("iamToken");
     localStorage.removeItem("folderId");
@@ -312,6 +362,7 @@ saveTokenBtn.onclick = async () => {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+                session_id: sessionId,
                 token: oauthToken,
                 folder_id: folderId
             })
