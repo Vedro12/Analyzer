@@ -5,44 +5,5 @@
     "problem": "ВМ не запущена, невозможно подключение к ВМ",
     "recommendation": "Запустить ВМ или удалить, если не используется.",
     "documentation": "Запустить ВМ в консоли: `https://yandex.cloud/ru/docs/compute/operations/vm-control/vm-stop-and-start`. Удалить ВМ в консоли: `https://yandex.cloud/ru/docs/compute/operations/vm-control/vm-delete`"
-  },
-  {
-    "resource": "compute",
-    "condition": "cores < 2, coreFraction < 100",
-    "problem": "Задержки во время работы ВМ",
-    "recommendation": "Увеличить количество CPU. Увеличить уровень производительности до 100%.",
-    "documentation": "Изменить вычислительные ресурсы ВМ: `https://yandex.cloud/ru/docs/compute/operations/vm-control/vm-update-resources`. Уровни производительности vCPU: `https://yandex.cloud/ru/docs/compute/concepts/performance-levels`"
-  },
-  {
-    "resource": "compute",
-    "condition": "cores > 2, coreFraction = 100",
-    "problem": "Задержки во время работы ВМ",
-    "recommendation1": "Попробовать проверить нагрузку на диск. Посмотреть график мониторинга диска: `https://console.yandex.cloud/folders/<ID_каталога>/compute/instance/<ID_ВМ>/disks/<ID_ДИСКА>/monitoring`",
-    "recommendation2": "Попробовать проверить нагрузку внутри ВМ",
-    "documentation2": "Можно установить на ВМ `iotop`. Запускать его по крону и логгировать процессы, которые проявляют активность свыше 1000кб/сек, можно примерно так: `/usr/sbin/iotop -botqqqk --iter=60 | grep -P \"\\d\\d\\d\\d.\\d\\d K\/s\" >> /var/log/iotop.log`"
-  },
-  {
-    "resource": "vpc",
-    "problem": "Низкая скорость сетевого соединения с внешними источниками",
-    "recommendation": "Со стороны Yandex Cloud скорость не ограничивается и может достигать сотен мегабит для исходящего и входящего трафика суммарно. Итоговая скорость сильно зависит от профиля сетевой нагрузки, мощности конечных точек передачи трафика, качества связывающих каналов, правил обработки трафика на промежуточных узлах. Скорость от ВМ или другого ресурса до удалённой точки в глобальной сети будет зависеть от маршрута.",
-    "documentation": "Существуют ли ограничения трафика, скорости соединения и ширины канала: `https://yandex.cloud/ru/docs/troubleshooting/vpc/how-to/connection-speed-bandwidth-restriction`"
-  },
-  {
-    "resource": "vpc",
-    "problem": "Как узнать скорость сетевого соединения",
-    "recommendation": "Скорость между ВМ в одной зоне доступности — в пределах единиц гигабит, между ВМ в разных зонах доступности — сотни мегабит, от ВМ до удаленной точки в глобальной сети — зависит от маршрута. Со Yandex Cloud ограничений нет, так что она может достигать сотен мегабит. Тесты можно провести самостоятельно, например, при помощи `iperf`. Точные цифры также зависят от конфигурации ваших ресурсов. Это особенно актуально в случае обращения на внешние IP, когда часть трафика идет через маршруты во внешнем интернете.",
-    "documentation": "Как узнать скорость каналов связи: `https://yandex.cloud/ru/docs/troubleshooting/vpc/how-to/connection-speed`"
-  },
-  {
-    "resource": "vpc",
-    "problem": "Как получить определённый внешний IP-адрес",
-    "recommendation": "Сейчас нет возможности получить определённый внешний IP-адрес. Вы можете методом перебора пробовать получить адрес из нужного диапазона, а после сделать его статическим.",
-    "documentation": "Сделать динамический публичный IP-адрес статическим: `https://yandex.cloud/ru/docs/vpc/operations/set-static-ip`. Зарезервировать статический публичный IP-адрес: `https://yandex.cloud/ru/docs/vpc/operations/get-static-ip`. Диапазоны публичных IP-адресов Yandex Cloud: `https://yandex.cloud/ru/docs/overview/concepts/public-ips`."
-  },
-  {
-    "resource": "s3",
-    "condition": "anonymous_access == true",
-    "problem": "Публичный бакет, возможна утечка данных",
-    "recommendation": "Ограничить доступ"
   }
 ]
