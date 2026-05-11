@@ -3,9 +3,9 @@ import openai
 import json
 
 client = openai.OpenAI(
-    api_key="",
+    api_key="*******",
     base_url="https://ai.api.cloud.yandex.net/v1",
-    project=""
+    project="***********"
 )
 
 def run_ai_chat(user_input: str, data: dict, history: list | None = None):
@@ -14,6 +14,13 @@ def run_ai_chat(user_input: str, data: dict, history: list | None = None):
 
     system_prompt = f"""
                     Ты — AI-ассистент по выявлению проблем в облачной инфраструктуры.
+                    Вот текущие данные:
+                    {json.dumps(data, indent=2, ensure_ascii=False)}
+                    У тебя есть БАЗА ПРАВИЛ (используй её для подходящих случаев):
+                    {json.dumps(rules, indent=2, ensure_ascii=False)}
+
+                    Ты должен:
+                    - прямо и лаконично отвечать на вопросы пользователя, анализируя его инфраструктуру
                     """
 
 
@@ -35,7 +42,7 @@ def run_ai_chat(user_input: str, data: dict, history: list | None = None):
             }
         ],
         temperature=0.3,
-        max_output_tokens=300
+        max_output_tokens=2000
     )
     return response.output_text
 

@@ -42,3 +42,40 @@ async def check_folder_exists(iam_token: str, folder_id: str):
         ) as response:
 
             return response.status == 200
+        
+def give_empty_resource_message(resource_name: str):
+    return {
+        "status": "no_data",
+        "message": f"Не найдена информация о ресурсе: {resource_name}. Его или нет, или есть проблемы с доступом"
+    }
+
+
+def check_api_field(data: dict, item_key: str):
+    if not isinstance(data, dict):
+        return True
+
+    value = data.get(item_key)
+
+    if value is None:
+        return True
+
+    if isinstance(value, list) and len(value) == 0:
+        return True
+
+    return False
+
+
+def unwrap_api_response(response):
+    if isinstance(response, dict) and response.get("status") == "ok":
+        return response.get("data", {})
+
+    return response
+
+
+def get_response_data_or_empty_list(response):
+    if isinstance(response, dict) and response.get("status") == "ok":
+        data = response.get("data", [])
+        return data if isinstance(data, list) else []
+
+    return []
+        

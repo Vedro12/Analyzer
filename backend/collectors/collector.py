@@ -1,7 +1,8 @@
 # backend/collectors/collector.py
 import aiohttp
 import asyncio
-
+from urllib.parse import quote
+from backend.helpers import check_api_field, give_empty_resource_message, unwrap_api_response, get_response_data_or_empty_list
 
 # ---------- Базовые асинхронные запросы ----------
 async def async_request(
@@ -22,25 +23,48 @@ async def async_request(
                 timeout=timeout
             ) as resp:
                 if resp.status == 200:
-                    return await resp.json()
+                    data = await resp.json()
+
+                    return {
+                        "status": "ok",
+                        "data": data
+                    }
+
+                response_text = await resp.text()
 
                 return {
-                    "error": f"HTTP {resp.status}",
-                    "status": "not_configured"
+                    "status": "api_error",
+                    "message": "Ошибка при обращении к API",
+                    "http_status": resp.status,
+                    "url": url,
+                    "params": params,
+                    "details": response_text
                 }
 
         except asyncio.TimeoutError:
-            return {"error": "timeout", "status": "not_configured"}
+            return {
+                "status": "api_timeout",
+                "message": "Таймаут при обращении к API",
+                "url": url,
+                "params": params
+            }
 
         except Exception as e:
-            return {"error": str(e), "status": "not_configured"}
+            return {
+                "status": "api_error",
+                "message": "Ошибка при обращении к API",
+                "url": url,
+                "params": params,
+                "details": str(e)
+            }
 
 
 async def async_request_with_pagination(
     iam_token: str,
     url: str,
     item_key: str,
-    params: dict = None
+    params: dict = None,
+    resource_name: str = None
 ):
     params = params.copy() if params else {}
     all_items = []
@@ -50,10 +74,15 @@ async def async_request_with_pagination(
         if page_token:
             params["pageToken"] = page_token
 
-        data = await async_request(iam_token, url, params)
+        response = await async_request(iam_token, url, params)
 
-        if "error" in data:
-            break
+        if response.get("status") != "ok":
+            return response
+
+        data = response.get("data", {})
+
+        if check_api_field(data, item_key):
+            return give_empty_resource_message(resource_name or item_key)
 
         items = data.get(item_key, [])
         all_items.extend(items)
@@ -62,7 +91,10 @@ async def async_request_with_pagination(
         if not page_token:
             break
 
-    return all_items
+    return {
+        "status": "ok",
+        "data": all_items
+    }
 
 
 # ---------- Compute ----------
@@ -97,12 +129,15 @@ async def get_resource_with_bindings(
         endpoint=f"/{resource_id}:listAccessBindings"
     )
 
-    details, bindings = await asyncio.gather(details_task, bindings_task)
+    details_resp, bindings_resp = await asyncio.gather(
+        details_task,
+        bindings_task
+    )
 
     resource_data = {
         item_id_key: resource_id,
-        "details": details,
-        "bindings": bindings
+        "details": unwrap_api_response(details_resp),
+        "bindings": unwrap_api_response(bindings_resp)
     }
 
     if resource_type == "instances" and status == "RUNNING":
@@ -111,10 +146,13 @@ async def get_resource_with_bindings(
             resource_type,
             endpoint=f"/{resource_id}:serialPortOutput"
         )
+
+        serial_data = unwrap_api_response(serial_resp)
+
         resource_data["serial"] = (
-            serial_resp.get("contents", "")
-            if isinstance(serial_resp, dict)
-            else ""
+            serial_data.get("contents", "")
+            if isinstance(serial_data, dict)
+            else serial_data
         )
 
     elif resource_type == "instances":
@@ -124,33 +162,42 @@ async def get_resource_with_bindings(
 
 
 async def collect_all_compute_data(iam_token: str, folder_id: str):
-    instances_list = await async_request_with_pagination(
+    instances_resp = await async_request_with_pagination(
         iam_token,
         "https://compute.api.cloud.yandex.net/compute/v1/instances",
         "instances",
-        {"folderId": folder_id}
+        {"folderId": folder_id},
+        "виртуальных машинах"
     )
 
-    disks_list = await async_request_with_pagination(
+    disks_resp = await async_request_with_pagination(
         iam_token,
         "https://compute.api.cloud.yandex.net/compute/v1/disks",
         "disks",
-        {"folderId": folder_id}
+        {"folderId": folder_id},
+        "дисках"
     )
 
-    images_list = await async_request_with_pagination(
+    images_resp = await async_request_with_pagination(
         iam_token,
         "https://compute.api.cloud.yandex.net/compute/v1/images",
         "images",
-        {"folderId": folder_id}
+        {"folderId": folder_id},
+        "образах"
     )
 
-    snapshots_list = await async_request_with_pagination(
+    snapshots_resp = await async_request_with_pagination(
         iam_token,
         "https://compute.api.cloud.yandex.net/compute/v1/snapshots",
         "snapshots",
-        {"folderId": folder_id}
+        {"folderId": folder_id},
+        "снимках"
     )
+
+    instances_list = get_response_data_or_empty_list(instances_resp)
+    disks_list = get_response_data_or_empty_list(disks_resp)
+    images_list = get_response_data_or_empty_list(images_resp)
+    snapshots_list = get_response_data_or_empty_list(snapshots_resp)
 
     instances_tasks = [
         get_resource_with_bindings(
@@ -162,7 +209,7 @@ async def collect_all_compute_data(iam_token: str, folder_id: str):
             vm.get("status")
         )
         for vm in instances_list
-        if vm.get("id")
+        if isinstance(vm, dict) and vm.get("id")
     ]
 
     disks_tasks = [
@@ -174,7 +221,7 @@ async def collect_all_compute_data(iam_token: str, folder_id: str):
             disk.get("id")
         )
         for disk in disks_list
-        if disk.get("id")
+        if isinstance(disk, dict) and disk.get("id")
     ]
 
     images_tasks = [
@@ -186,7 +233,7 @@ async def collect_all_compute_data(iam_token: str, folder_id: str):
             img.get("id")
         )
         for img in images_list
-        if img.get("id")
+        if isinstance(img, dict) and img.get("id")
     ]
 
     snapshots_tasks = [
@@ -198,7 +245,7 @@ async def collect_all_compute_data(iam_token: str, folder_id: str):
             snap.get("id")
         )
         for snap in snapshots_list
-        if snap.get("id")
+        if isinstance(snap, dict) and snap.get("id")
     ]
 
     all_instances, all_disks, all_images, all_snapshots = await asyncio.gather(
@@ -209,15 +256,15 @@ async def collect_all_compute_data(iam_token: str, folder_id: str):
     )
 
     return {
-        "instances": all_instances,
-        "disks": all_disks,
-        "images": all_images,
-        "snapshots": all_snapshots
+        "instances": all_instances if instances_resp.get("status") == "ok" else instances_resp,
+        "disks": all_disks if disks_resp.get("status") == "ok" else disks_resp,
+        "images": all_images if images_resp.get("status") == "ok" else images_resp,
+        "snapshots": all_snapshots if snapshots_resp.get("status") == "ok" else snapshots_resp
     }
 
 
 # ---------- S3 ----------
-async def yc_get_s3_info(
+async def yc_get_s3_buckets(
     iam_token: str,
     folder_id: str,
     endpoint: str = "",
@@ -234,51 +281,87 @@ async def yc_get_s3_info(
     return await async_request(iam_token, url, params)
 
 
+async def yc_get_s3_bucket_info(
+    iam_token: str,
+    bucket_name: str,
+    action: str,
+    params: dict = None
+):
+    safe_bucket_name = quote(bucket_name, safe="")
+    url = f"https://storage.api.cloud.yandex.net/storage/v1/buckets/{safe_bucket_name}:{action}"
+    return await async_request(iam_token, url, params)
+
+
 async def collect_all_s3_data(iam_token: str, folder_id: str):
-    buckets_resp = await yc_get_s3_info(iam_token, folder_id)
-    buckets = buckets_resp.get("buckets", []) if isinstance(buckets_resp, dict) else []
+    buckets_resp = await yc_get_s3_buckets(iam_token, folder_id)
+
+    if not isinstance(buckets_resp, dict):
+        return {
+            "status": "api_error",
+            "message": "Ошибка при обращении к API",
+            "details": "Некорректный формат ответа при получении списка S3-бакетов"
+        }
+
+    if buckets_resp.get("status") != "ok":
+        return buckets_resp
+
+    buckets_data = buckets_resp.get("data", {})
+
+    if check_api_field(buckets_data, "buckets"):
+        return give_empty_resource_message("S3-бакетах")
+
+    buckets = buckets_data.get("buckets", [])
 
     async def process_bucket(bucket):
         name = bucket.get("name")
 
+        if not name:
+            return {
+                "status": "no_data",
+                "message": "Не найдено имя S3-бакета"
+            }
+
         stats, https, bindings, inventory = await asyncio.gather(
-            yc_get_s3_info(
+            yc_get_s3_buckets(
                 iam_token,
                 folder_id,
                 endpoint=f"/{name}:getStats",
                 use_folder=False
             ),
-            yc_get_s3_info(
+            yc_get_s3_buckets(
                 iam_token,
                 folder_id,
                 endpoint=f"/{name}:getHttpsConfig",
                 use_folder=False
             ),
-            yc_get_s3_info(
+            yc_get_s3_bucket_info(
                 iam_token,
-                folder_id,
-                endpoint=f"/{name}:listAccessBindings",
-                use_folder=False
+                name,
+                "listAccessBindings"
             ),
-            yc_get_s3_info(
+            yc_get_s3_buckets(
                 iam_token,
                 folder_id,
-                endpoint=f"/{name}:listInventoryConfiguration",
+                endpoint=f"/{name}:listInventoryConfigurations",
                 use_folder=False
             )
         )
 
         return {
             "bucket": bucket,
-            "stats": stats,
-            "https": https,
-            "bindings": bindings,
-            "inventory": inventory
+            "stats": unwrap_api_response(stats),
+            "https": unwrap_api_response(https),
+            "bindings": unwrap_api_response(bindings),
+            "inventory": unwrap_api_response(inventory)
         }
 
-    tasks = [process_bucket(bucket) for bucket in buckets]
-    return await asyncio.gather(*tasks) if tasks else []
+    tasks = [
+        process_bucket(bucket)
+        for bucket in buckets
+        if isinstance(bucket, dict)
+    ]
 
+    return await asyncio.gather(*tasks) if tasks else give_empty_resource_message("S3-бакетах")
 
 # ---------- VPC ----------
 async def yc_get_vpc_info(
@@ -315,11 +398,26 @@ async def collect_all_vpc_data(iam_token: str, folder_id: str):
 
     results = await asyncio.gather(*tasks)
 
-    return {
-        "addresses": results[0],
-        "gateways": results[1],
-        "networks": results[2],
-        "routeTables": results[3],
-        "securityGroups": results[4],
-        "subnets": results[5]
-    }
+    data = {}
+
+    for endpoint, result in zip(endpoints, results):
+        if not isinstance(result, dict):
+            data[endpoint] = {
+                "status": "api_error",
+                "message": "Ошибка при обращении к API",
+                "details": "Некорректный формат ответа"
+            }
+            continue
+
+        if result.get("status") != "ok":
+            data[endpoint] = result
+            continue
+
+        endpoint_data = result.get("data", {})
+
+        if check_api_field(endpoint_data, endpoint):
+            data[endpoint] = give_empty_resource_message(endpoint)
+        else:
+            data[endpoint] = endpoint_data
+
+    return data

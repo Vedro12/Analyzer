@@ -10,10 +10,12 @@
   <div id="container">
     
     <header id="header">
-      <div class="logo">Cloud Analyzer</div>
+      <button id="open-site-btn" class="logo logo-btn">
+        Облачный ассистент
+      </button>
       <div class="header-actions">
-        <button id="help-btn" class="icon-btn" title="Помощь"></button>
-        <button id="reset-btn" class="icon-btn" title="Очистить историю чата"></button>
+        <button id="help-btn" class="icon-btn"></button>
+        <button id="reset-btn" class="icon-btn"></button>
       </div>
     </header>
 
@@ -42,10 +44,10 @@
 
     <div id="chat-box">
       <div class="welcome-message">
-        <div class="avatar ai-avatar"></div>
+        <div class="avatar assistant-avatar"></div>
         <div class="welcome-content">
-          <h3>Привет! Я ваш AI-ассистент</h3>
-          <p>Задайте мне любой вопрос или попросите о помощи — я с радостью отвечу.</p>
+          <h3>Привет! С чем я могу помочь сегодня?</h3>
+          <p>Задайте вопрос или проведите диагностику ваших ресурсов в Yandex Cloud.</p>
         </div>
       </div>
     </div>
@@ -62,13 +64,14 @@
           <span>➤</span>
         </button>
       </div>
-      <p class="disclaimer">AI может допускать ошибки. Проверяйте важную информацию.</p>
+      <p class="disclaimer">Рекомендации носят справочный характер. Проверяйте важные действия перед применением.</p>
     </div>
 
   </div>
 
   <script src="lib/purify.min.js"></script>
   <script src="lib/marked.min.js"></script>
+  <script src="common.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

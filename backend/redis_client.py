@@ -26,7 +26,7 @@ def add_message(session_id: str, role: str, content: str):
     r.ltrim(key, -MAX_MESSAGES, -1)
     r.expire(key, 86400) 
 
-def get_history(session_id: str):
+def get_history_by_session(session_id: str):
     key = f"chat:{session_id}"
     data = r.lrange(key, 0, -1)
     return [safe_load(x) for x in data if x]

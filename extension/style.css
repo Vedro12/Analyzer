@@ -80,13 +80,16 @@ body {
 }
 
 .logo {
+    border: 0px;
     font-size: 16px;
     font-weight: 700;
     background: var(--accent-gradient);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    -webkit-text-fill-color: transparent; 
     letter-spacing: -0.5px;
+    cursor: pointer;
 }
 
 .header-actions {
@@ -123,7 +126,7 @@ body {
 }
 
 #help-btn::after {
-    content: "Инструкции по получению OAuth-токена и Folder ID находятся на сайте";
+    content: "Инструкции по получению OAuth-токена и идентификатора каталога находятся на сайте";
     position: absolute;
     bottom: -55px;
     right: 0;
@@ -472,7 +475,7 @@ body {
     color: transparent;
 }
 
-.ai-avatar {
+.assistant-avatar {
     background-image: url("https://cdn.jsdelivr.net/npm/lucide-static/icons/bot.svg"),
         linear-gradient(135deg, rgba(96, 165, 250, 0.25), rgba(167, 139, 250, 0.25));
     background-repeat: no-repeat, no-repeat;
@@ -509,9 +512,43 @@ body {
     color: var(--text);
 }
 
-.message:not(.user) .message-content {
+.message.assistant .message-content {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
+}
+
+.message.system .message-content {
+    background: var(--info-light);
+    border: 1px solid rgba(8, 145, 178, 0.28);
+    color: var(--text);
+}
+
+.message.error .message-content {
+    background: var(--danger-light);
+    border: 1px solid rgba(220, 38, 38, 0.28);
+    color: var(--text);
+}
+
+.system-avatar {
+    background-image:
+        url("https://cdn.jsdelivr.net/npm/lucide-static/icons/info.svg"),
+        linear-gradient(135deg, rgba(8, 145, 178, 0.20), rgba(96, 165, 250, 0.20));
+
+    background-repeat: no-repeat, no-repeat;
+    background-position: center, center;
+    background-size: 14px, cover;
+    background-color: transparent;
+}
+
+.error-avatar {
+    background-image:
+        url("https://cdn.jsdelivr.net/npm/lucide-static/icons/triangle-alert.svg"),
+        linear-gradient(135deg, rgba(220, 38, 38, 0.20), rgba(234, 88, 12, 0.18));
+
+    background-repeat: no-repeat, no-repeat;
+    background-position: center, center;
+    background-size: 14px, cover;
+    background-color: transparent;
 }
 
 /* markdown content */

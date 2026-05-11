@@ -1,6 +1,4 @@
-/* =========================
-   FRONTEND (frontend/app.js)
-========================= */
+/* ========================= FRONTEND (frontend/app.js) ========================= */
 const chatBox = document.getElementById("chat-box");
 const userInput = document.getElementById("user-input");
 const sendBtn = document.getElementById("send-btn");
@@ -9,344 +7,131 @@ const resetBtn = document.getElementById("reset-btn");
 const tokenInput = document.getElementById("iam-token-input");
 const folderInput = document.getElementById("folder-id-input");
 const saveTokenBtn = document.getElementById("save-token-btn");
+const tokenError = document.getElementById("token-error");
+const folderError = document.getElementById("folder-error");
 
 let isCollected = false;
 let oauthToken = localStorage.getItem("iamToken") || "";
 let folderId = localStorage.getItem("folderId") || "";
-
-const tokenError = document.getElementById("token-error");
-const folderError = document.getElementById("folder-error");
-
-/* =========================
-   SessionControl
-========================= */
-
-function getSessionId() {
-    let sessionId = localStorage.getItem("session_id");
-
-    if (!sessionId) {
-        sessionId = crypto.randomUUID();
-        localStorage.setItem("session_id", sessionId);
-    }
-
-    return sessionId;
-}
-
 const sessionId = getSessionId();
 
-/* =========================
-   INIT INPUTS
-========================= */
+marked.setOptions({
+    breaks: true,
+    gfm: true
+});
 
 tokenInput.value = oauthToken;
 folderInput.value = folderId;
 
-tokenInput.addEventListener("input", () => {
-    oauthToken = tokenInput.value.trim();
-    localStorage.setItem("iamToken", oauthToken);
-});
-
-folderInput.addEventListener("input", () => {
-    folderId = folderInput.value.trim();
-    localStorage.setItem("folderId", folderId);
-});
-
-/* =========================
-   VALIDATION
-========================= */
-
-function validateToken(token) {
-    if (!token) return "Введите токен";
-    if (token.length < 50) return "Токен слишком короткий";
-    if (/\s/.test(token)) return "Токен не должен содержать пробелы";
-    return "";
-}
-
-function validateFolderId(id) {
-    if (!id) return "Введите идентификатор каталога";
-    if (!/^[a-z0-9]+$/.test(id)) return "Только латиница и цифры";
-    if (id.length < 20 || id.length > 25) return "Неверная длина идентификатора каталога";
-    return "";
-}
-
-tokenInput.addEventListener("input", () => {
-    tokenError.textContent = validateToken(tokenInput.value.trim());
-});
-
-folderInput.addEventListener("input", () => {
-    folderError.textContent = validateFolderId(folderInput.value.trim());
-});
-
-/* =========================
-   UI HELPERS
-========================= */
-
-function scrollChat() {
-    chatBox.scrollTop = chatBox.scrollHeight;
-}
-
 function clearChatUI() {
     chatBox.innerHTML = `
         <div class="welcome-message">
-            <div class="avatar ai-avatar"></div>
+            <div class="avatar assistant-avatar"></div>
             <div class="welcome-content">
-                <h3>Привет! Я ваш AI-ассистент</h3>
-                <p>Задайте мне любой вопрос или попросите о помощи — я с радостью отвечу.</p>
+                <h3>Привет! С чем я могу помочь сегодня?</h3>
+                <p>Задайте вопрос или проведите диагностику ваших ресурсов в Yandex Cloud.</p>
             </div>
         </div>
     `;
 }
 
-/* =========================
-   MESSAGE RENDER (NO HISTORY LOGIC HERE)
-========================= */
-
-marked.setOptions({
-    breaks: true,     
-    gfm: true       
+tokenInput.addEventListener("input", () => {
+    oauthToken = tokenInput.value.trim();
+    localStorage.setItem("iamToken", oauthToken);
+    tokenError.textContent = validateToken(oauthToken);
 });
 
-function addMessage(text, role) {
-    const messageDiv = document.createElement("div");
-    messageDiv.className = `message ${role}`;
-
-    const avatar = document.createElement("div");
-    avatar.className = `avatar ${role === "user" ? "user-avatar" : "ai-avatar"}`;
-
-    const content = document.createElement("div");
-    content.className = "message-content";
-
-    const rawHtml = marked.parse(text);
-
-    const safeHtml = DOMPurify.sanitize(rawHtml);
-
-    content.innerHTML = safeHtml;
-    enhanceCodeBlocks(content);
-
-    messageDiv.appendChild(avatar);
-    messageDiv.appendChild(content);
-
-    chatBox.appendChild(messageDiv);
-    scrollChat();
-}
-
-function enhanceCodeBlocks(container) {
-    const blocks = container.querySelectorAll("pre");
-
-    blocks.forEach((pre) => {
-        const code = pre.querySelector("code");
-
-        // язык из class="language-js"
-        let lang = "code";
-        const match = code?.className?.match(/language-(\w+)/);
-        if (match) lang = match[1];
-
-        // бейдж языка
-        const langLabel = document.createElement("div");
-        langLabel.className = "code-lang";
-        langLabel.textContent = lang;
-
-        // кнопка копирования
-        const btn = document.createElement("button");
-        btn.className = "copy-btn";
-
-        btn.onclick = async () => {
-            await navigator.clipboard.writeText(code.innerText);
-            btn.classList.add("copied");
-
-            setTimeout(() => {
-                btn.classList.remove("copied");
-            }, 1200);
-        };
-
-        pre.style.position = "relative";
-        pre.appendChild(langLabel);
-        pre.appendChild(btn);
-    });
-}
-
-window.addEventListener("load", async () => {
-    clearChatUI();
-    initOnboarding(); 
-    
-    try {
-        const res = await fetch("http://127.0.0.1:8000/history", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                session_id: sessionId
-            })
-        });
-        const data = await res.json();
-
-        // ожидаем: [{role: "user/ai", content: "..."}]
-        if (data.history && Array.isArray(data.history)) {
-            data.history.forEach(msg => {
-                addMessage(msg.content, msg.role);
-            });
-        }
-
-    } catch (e) {
-        console.error("Failed to load history:", e);
-    }
+folderInput.addEventListener("input", () => {
+    folderId = folderInput.value.trim();
+    localStorage.setItem("folderId", folderId);
+    folderError.textContent = validateFolderId(folderId);
 });
-
-function removeLoadingMessage() {
-    const el = document.getElementById("loading-msg");
-    if (el) el.remove();
-}
-
-function addLoadingMessage() {
-    const messageDiv = document.createElement("div");
-    messageDiv.className = "message ai loading";
-    messageDiv.id = "loading-msg";
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar ai-avatar";
-
-    const content = document.createElement("div");
-    content.className = "message-content";
-
-    content.innerHTML = `
-        <div class="typing">
-            <span></span><span></span><span></span>
-        </div>
-    `;
-
-    messageDiv.appendChild(avatar);
-    messageDiv.appendChild(content);
-
-    chatBox.appendChild(messageDiv);
-    scrollChat();
-}
-
-/* =========================
-   SEND MESSAGE (BACKEND OWNS HISTORY)
-========================= */
 
 async function sendMessage() {
     sendBtn.disabled = true;
+
     const message = userInput.value.trim();
+
     if (!message) {
         sendBtn.disabled = false;
         return;
     }
 
     userInput.value = "";
-    addMessage(message, "user");
-    addLoadingMessage();
+
+    addMessage(chatBox, message, "user");
+    addLoadingMessage(chatBox);
 
     try {
-        const res = await fetch("http://127.0.0.1:8000/ai-chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                session_id: sessionId,
-                message
-            })
-        });
-        const data = await res.json();
+        const data = await sendChatMessage(sessionId, message);
 
         if (data.status !== "ok") {
-            addMessage(data.message || "Ошибка при получении ответа", "ai");
-            return;
+            addMessage(chatBox, data.message || "Ошибка при получении ответа", "error");
+        } else {
+            addMessage(chatBox, data.answer, "assistant");
         }
-        // backend возвращает полный ответ + (опционально) историю
-        addMessage(data.answer, "ai");
 
     } catch (e) {
-        addMessage("Ошибка: " + e, "ai");
+        addMessage(chatBox, "Ошибка: " + e.message, "error");
+    } finally {
+        removeLoadingMessage();
+        sendBtn.disabled = false;
     }
-    removeLoadingMessage();
-    sendBtn.disabled = false;
 }
-
-sendBtn.onclick = sendMessage;
-
-userInput.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-});
-
-/* =========================
-   COLLECT DATA
-========================= */
 
 collectBtn.onclick = async () => {
     if (!oauthToken || !folderId) {
-        addMessage("Нужны токен и folder ID", "ai");
+        addMessage(chatBox, "Для сбора данных необходимо сначала ввести OAuth-токен и идентификатор каталога", "system");
         return;
     }
 
     try {
-        const res = await fetch("http://127.0.0.1:8000/collect", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                session_id: sessionId
-            })
-        });
-
-        const data = await res.json();
+        const data = await collectInfraData(sessionId);
 
         if (data.status !== "ok") {
-            addMessage(data.message || "Ошибка сбора данных", "ai");
+            addMessage(chatBox, data.message || "Ошибка сбора данных", "error");
             return;
         }
 
         isCollected = true;
-        addMessage(data.message || "Данные инфраструктуры собраны", "ai");
+        addMessage(chatBox, data.message || "Данные инфраструктуры собраны", "system");
 
     } catch (e) {
-        addMessage("Ошибка: " + e, "ai");
+        addMessage(chatBox, "Ошибка: " + e.message, "error");
     }
 };
-
-/* =========================
-   RESET CHAT (SERVER OWNS HISTORY)
-========================= */
 
 resetBtn.onclick = async () => {
-    if (!confirm("Все собранные данные о ресурсах и история переписки будут удалены без возможности воостановления. Очистить чат?")) return;
+    if (!confirm("Все собранные данные о ресурсах и история переписки будут удалены без возможности восстановления. Очистить чат?")) return;
 
-    const res = await fetch("http://127.0.0.1:8000/clear-all", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            session_id: sessionId
-        })
-    });
+    try {
+        const data = await clearAllData(sessionId);
 
-    const data = await res.json();
+        if (data.status !== "cleared") {
+            addMessage(chatBox, data.message || "Ошибка очистки", "error");
+            return;
+        }
 
-    if (data.status !== "cleared") {
-        addMessage(data.message || "Ошибка очистки", "ai");
-        return;
+        localStorage.removeItem("iamToken");
+        localStorage.removeItem("folderId");
+
+        oauthToken = "";
+        folderId = "";
+
+        tokenInput.value = "";
+        folderInput.value = "";
+
+        tokenError.textContent = "";
+        folderError.textContent = "";
+
+        isCollected = false;
+        clearChatUI();
+        addMessage(chatBox, data.message || "Сессия, токен, история и данные очищены", "system");
+
+    } catch (e) {
+        addMessage(chatBox, "Ошибка: " + e.message, "error");
     }
-    
-
-    localStorage.removeItem("iamToken");
-    localStorage.removeItem("folderId");
-
-    oauthToken = "";
-    folderId = "";
-
-    tokenInput.value = "";
-    folderInput.value = "";
-
-    tokenError.textContent = "";
-    folderError.textContent = "";
-    
-    isCollected = false;
-    clearChatUI();
-    addMessage("История чата очищена", "ai");
 };
-
-/* =========================
-   SAVE TOKEN
-========================= */
 
 saveTokenBtn.onclick = async () => {
     const tokenErr = validateToken(oauthToken);
@@ -358,53 +143,50 @@ saveTokenBtn.onclick = async () => {
     if (tokenErr || folderErr) return;
 
     try {
-        const res = await fetch("http://127.0.0.1:8000/set-token", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                session_id: sessionId,
-                token: oauthToken,
-                folder_id: folderId
-            })
-        });
-
-        const data = await res.json();
+        const data = await saveTokenToBackend(sessionId, oauthToken, folderId);
 
         if (data.status !== "ok") {
-            addMessage(data.message || "Ошибка сохранения токена", "ai");
+            addMessage(chatBox, data.message || "Ошибка сохранения токена", "error");
             return;
         }
 
-        addMessage("Токен успешно сохранён", "ai");
+        addMessage(chatBox, data.message || "Токен успешно установлен", "system");
 
     } catch (e) {
-        addMessage("Ошибка соединения: " + e, "ai");
+        addMessage(chatBox, "Ошибка соединения: " + e.message, "error");
     }
 };
 
-/* =========================
-   PASSWORD TOGGLE
-========================= */
+sendBtn.onclick = sendMessage;
 
-document.addEventListener("click", (e) => {
-    if (e.target.classList.contains("password-control")) {
-        const input = document.getElementById("iam-token-input");
-
-        if (input.type === "password") {
-            input.type = "text";
-            e.target.classList.add("view");
-        } else {
-            input.type = "password";
-            e.target.classList.remove("view");
-        }
+userInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
     }
 });
+
+setupPasswordToggle();
+
+window.addEventListener("load", async () => {
+    clearChatUI();
+    initOnboarding();
+
+    try {
+        await loadHistory(chatBox, sessionId);
+    } catch (e) {
+        console.error("Failed to load history:", e);
+    }
+});
+
+/* =========================
+   ONBOARDING
+========================= */
 
 let modal;
 let slides;
 let nextBtn;
 let prevBtn;
-
 let currentSlide = 0;
 
 function initOnboarding(force = false) {
@@ -428,7 +210,6 @@ function initOnboarding(force = false) {
     renderDots();
     render();
 
-    // важно: НЕ копим обработчики
     nextBtn.onclick = handleNext;
     prevBtn.onclick = handlePrev;
 }
@@ -459,8 +240,7 @@ function render() {
     }
 
     if (nextBtn) {
-        nextBtn.textContent =
-            currentSlide === slides.length - 1 ? "Начать" : "Далее →";
+        nextBtn.textContent = currentSlide === slides.length - 1 ? "Начать" : "Далее →";
     }
 
     updateDots();
@@ -506,9 +286,11 @@ function restartOnboarding() {
     initOnboarding(true);
 }
 
-document.getElementById("restart-onboarding-btn")
-    .onclick = restartOnboarding;
+document.getElementById("restart-onboarding-btn").onclick = restartOnboarding;
 
+/* =========================
+   MOBILE MENU
+========================= */
 
 const menuBtn = document.getElementById("menu-btn");
 const sidebar = document.querySelector(".sidebar");
@@ -524,9 +306,11 @@ overlay.onclick = () => {
     overlay.classList.remove("active");
 };
 
-const input = document.getElementById("user-input");
+/* =========================
+   AUTO RESIZE INPUT
+========================= */
 
-input.addEventListener("input", () => {
-    input.style.height = "auto";                 // сброс
-    input.style.height = input.scrollHeight + "px"; // рост
+userInput.addEventListener("input", () => {
+    userInput.style.height = "auto";
+    userInput.style.height = userInput.scrollHeight + "px";
 });

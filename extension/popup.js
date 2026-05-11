@@ -1,6 +1,4 @@
-/* =========================
-   EXTENSION (extension/popup.js)
-========================= */
+/* ========================= EXTENSION (extension/popup.js) ========================= */
 const chatBox = document.getElementById("chat-box");
 const userInput = document.getElementById("user-input");
 const sendBtn = document.getElementById("send-btn");
@@ -11,41 +9,31 @@ const folderInput = document.getElementById("folder-id-input");
 const saveTokenBtn = document.getElementById("save-token-btn");
 const tokenError = document.getElementById("token-error");
 const folderError = document.getElementById("folder-error");
-
-/* =========================
-   STATE (ONLY UI)
-========================= */
+const openSiteBtn = document.getElementById("open-site-btn");
 
 let oauthToken = localStorage.getItem("iamToken") || "";
 let folderId = localStorage.getItem("folderId") || "";
+const sessionId = getSessionId();
 
-/* =========================
-   INIT
-========================= */
+marked.setOptions({
+    breaks: true,
+    gfm: true
+});
 
 tokenInput.value = oauthToken;
 folderInput.value = folderId;
 
-/* =========================
-   SessionControl
-========================= */
-
-function getSessionId() {
-    let sessionId = localStorage.getItem("session_id");
-
-    if (!sessionId) {
-        sessionId = crypto.randomUUID();
-        localStorage.setItem("session_id", sessionId);
-    }
-
-    return sessionId;
+function clearChatUI() {
+    chatBox.innerHTML = `
+        <div class="welcome-message">
+            <div class="avatar assistant-avatar"></div>
+            <div class="welcome-content">
+                <h3>Привет! С чем я могу помочь сегодня?</h3>
+                <p>Задайте вопрос или проведите диагностику ваших ресурсов в Yandex Cloud.</p>
+            </div>
+        </div>
+    `;
 }
-
-const sessionId = getSessionId();
-
-/* =========================
-   INPUT SYNC (localStorage only)
-========================= */
 
 tokenInput.addEventListener("input", () => {
     oauthToken = tokenInput.value.trim();
@@ -59,136 +47,6 @@ folderInput.addEventListener("input", () => {
     folderError.textContent = validateFolderId(folderId);
 });
 
-/* =========================
-   VALIDATION
-========================= */
-
-function validateToken(token) {
-    if (!token) return "Введите токен";
-    if (token.length < 50) return "Токен слишком короткий";
-    if (/\s/.test(token)) return "Токен не должен содержать пробелы";
-    return "";
-}
-
-function validateFolderId(id) {
-    if (!id) return "Введите идентификатор каталога";
-    if (!/^[a-z0-9]+$/.test(id)) return "Только латиница и цифры";
-    if (id.length < 20 || id.length > 25) return "Неверная длина";
-    return "";
-}
-
-/* =========================
-   PASSWORD TOGGLE
-========================= */
-
-document.addEventListener("click", (e) => {
-    if (e.target.classList.contains("password-control")) {
-        const input = document.getElementById("iam-token-input");
-
-        if (input.type === "password") {
-            input.type = "text";
-            e.target.classList.add("view");
-        } else {
-            input.type = "password";
-            e.target.classList.remove("view");
-        }
-    }
-});
-
-/* =========================
-   UI
-========================= */
-
-function scrollChat() {
-    chatBox.scrollTop = chatBox.scrollHeight;
-}
-
-function clearChatUI() {
-    chatBox.innerHTML = `
-        <div class="welcome-message">
-            <div class="avatar ai-avatar"></div>
-            <div class="welcome-content">
-                <h3>Привет! Я Cloud Assistant</h3>
-                <p>Задайте вопрос или соберите данные.</p>
-            </div>
-        </div>
-    `;
-}
-
-/* =========================
-   ENHANCE CODE BLOCKS (как на сайте)
-========================= */
-
-function enhanceCodeBlocks(container) {
-    const blocks = container.querySelectorAll("pre");
-    
-    blocks.forEach((pre) => {
-        const code = pre.querySelector("code");
-        if (!code) return;
-        
-        // Определяем язык из class="language-js"
-        let lang = "code";
-        const match = code.className?.match(/language-(\w+)/);
-        if (match) lang = match[1];
-        
-        // Бейдж языка
-        const langLabel = document.createElement("div");
-        langLabel.className = "code-lang";
-        langLabel.textContent = lang;
-        
-        // Кнопка копирования
-        const btn = document.createElement("button");
-        btn.className = "copy-btn";
-        btn.onclick = async () => {
-            await navigator.clipboard.writeText(code.innerText);
-            btn.classList.add("copied");
-            setTimeout(() => btn.classList.remove("copied"), 1200);
-        };
-        
-        pre.style.position = "relative";
-        pre.appendChild(langLabel);
-        pre.appendChild(btn);
-    });
-}
-
-/* =========================
-   MESSAGE
-========================= */
-
-marked.setOptions({
-    breaks: true,     
-    gfm: true       
-});
-
-function addMessage(text, role) {
-    const messageDiv = document.createElement("div");
-    messageDiv.className = `message ${role}`;
-
-    const avatar = document.createElement("div");
-    avatar.className = `avatar ${role === "user" ? "user-avatar" : "ai-avatar"}`;
-
-    const content = document.createElement("div");
-    content.className = "message-content";
-
-    const rawHtml = marked.parse(text);
-
-    const safeHtml = DOMPurify.sanitize(rawHtml);
-
-    content.innerHTML = safeHtml;
-    enhanceCodeBlocks(content);
-
-    messageDiv.appendChild(avatar);
-    messageDiv.appendChild(content);
-
-    chatBox.appendChild(messageDiv);
-    scrollChat();
-}
-
-
-/* =========================
-   SEND MESSAGE
-========================= */
-
 async function sendMessage() {
     sendBtn.disabled = true;
 
@@ -201,102 +59,46 @@ async function sendMessage() {
 
     userInput.value = "";
 
-    addMessage(message, "user");
-    addLoadingMessage();
+    addMessage(chatBox, message, "user");
+    addLoadingMessage(chatBox);
 
     try {
-        const res = await fetch("http://127.0.0.1:8000/ai-chat", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                session_id: sessionId,
-                message
-            })
-        });
-
-        const data = await res.json();
+        const data = await sendChatMessage(sessionId, message);
 
         if (data.status !== "ok") {
-            addMessage(data.message || "Ошибка при получении ответа", "ai");
+            addMessage(chatBox, data.message || "Ошибка при получении ответа", "error");
         } else {
-            addMessage(data.answer, "ai");
+            addMessage(chatBox, data.answer, "assistant");
         }
 
     } catch (e) {
-        addMessage("Ошибка: " + e.message, "ai");
+        addMessage(chatBox, "Ошибка: " + e.message, "error");
     } finally {
         removeLoadingMessage();
         sendBtn.disabled = false;
     }
 }
 
-function addLoadingMessage() {
-    const messageDiv = document.createElement("div");
-    messageDiv.className = "message ai loading";
-    messageDiv.id = "loading-msg";
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar ai-avatar";
-
-    const content = document.createElement("div");
-    content.className = "message-content";
-
-    content.innerHTML = `
-        <div class="typing">
-            <span></span><span></span><span></span>
-        </div>
-    `;
-
-    messageDiv.appendChild(avatar);
-    messageDiv.appendChild(content);
-
-    chatBox.appendChild(messageDiv);
-    scrollChat();
-}
-
-function removeLoadingMessage() {
-    const el = document.getElementById("loading-msg");
-    if (el) el.remove();
-}
-
-
-
-/* =========================
-   COLLECT (NO LOCAL STATE)
-========================= */
-
 async function collectData() {
     if (!oauthToken || !folderId) {
-        addMessage("Нужен токен и folder ID", "ai");
+        addMessage(chatBox, "Для сбора данных необходимо сначала ввести OAuth-токен и идентификатор каталога", "system");
         return;
     }
 
     try {
-        const res = await fetch("http://127.0.0.1:8000/collect", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                session_id: sessionId
-            })
-        });
-
-        const data = await res.json();
+        const data = await collectInfraData(sessionId);
 
         if (data.status !== "ok") {
-            addMessage(data.message || "Ошибка сбора данных", "ai");
+            addMessage(chatBox, data.message || "Ошибка сбора данных", "error");
             return;
         }
 
-        addMessage(data.message || "Данные собраны", "ai");
+        addMessage(chatBox, data.message || "Данные инфраструктуры собраны", "system");
 
     } catch (e) {
-        addMessage("Ошибка: " + e.message, "ai");
+        addMessage(chatBox, "Ошибка: " + e.message, "error");
     }
 }
-
-/* =========================
-   SAVE TOKEN
-========================= */
 
 async function saveToken() {
     const tokenErr = validateToken(oauthToken);
@@ -308,33 +110,19 @@ async function saveToken() {
     if (tokenErr || folderErr) return;
 
     try {
-        const res = await fetch("http://127.0.0.1:8000/set-token", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                session_id: sessionId,
-                token: oauthToken,
-                folder_id: folderId
-            })
-        });
-
-        const data = await res.json();
+        const data = await saveTokenToBackend(sessionId, oauthToken, folderId);
 
         if (data.status !== "ok") {
-            addMessage(data.message || "Ошибка сохранения токена", "ai");
+            addMessage(chatBox, data.message || "Ошибка сохранения токена", "error");
             return;
         }
 
-        addMessage(data.message || "Токен сохранён", "ai");
+        addMessage(chatBox, data.message || "Токен успешно установлен", "system");
 
     } catch (e) {
-        addMessage("Ошибка: " + e.message, "ai");
+        addMessage(chatBox, "Ошибка: " + e.message, "error");
     }
 }
-
-/* =========================
-   RESET CHAT (OLD STYLE CONFIRM)
-========================= */
 
 let resetConfirm = false;
 
@@ -354,38 +142,43 @@ resetBtn.onclick = async () => {
     resetConfirm = false;
     resetBtn.classList.remove("confirm");
 
-    await fetch("http://127.0.0.1:8000/clear-all", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-            session_id: sessionId
-        })
-    });
+    try {
+        const data = await clearAllData(sessionId);
 
-    localStorage.removeItem("iamToken");
-    localStorage.removeItem("folderId");
+        if (data.status !== "cleared") {
+            addMessage(chatBox, data.message || "Ошибка очистки", "error");
+            return;
+        }
 
-    oauthToken = "";
-    folderId = "";
+        localStorage.removeItem("iamToken");
+        localStorage.removeItem("folderId");
 
-    tokenInput.value = "";
-    folderInput.value = "";
+        oauthToken = "";
+        folderId = "";
 
-    tokenError.textContent = "";
-    folderError.textContent = "";
+        tokenInput.value = "";
+        folderInput.value = "";
 
-    clearChatUI();
-    addMessage("История чата очищена", "ai");
+        tokenError.textContent = "";
+        folderError.textContent = "";
+
+        clearChatUI();
+        addMessage(chatBox, data.message || "Сессия, токен, история и данные очищены", "system");
+
+    } catch (e) {
+        addMessage(chatBox, "Ошибка: " + e.message, "error");
+    }
 };
-
-/* =========================
-   EVENTS
-========================= */
 
 sendBtn.onclick = sendMessage;
 collectBtn.onclick = collectData;
 saveTokenBtn.onclick = saveToken;
 
+openSiteBtn.onclick = () => {
+    chrome.tabs.create({
+        url: "http://84.252.135.249"
+    });
+};
 
 userInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -394,30 +187,13 @@ userInput.addEventListener("keydown", (e) => {
     }
 });
 
-/* =========================
-   INIT
-========================= */
+setupPasswordToggle();
 
 window.addEventListener("load", async () => {
     clearChatUI();
-    
+
     try {
-        const res = await fetch("http://127.0.0.1:8000/history", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                session_id: sessionId
-            })
-        });
-        const data = await res.json();
-
-        // ожидаем: [{role: "user/ai", content: "..."}]
-        if (data.history && Array.isArray(data.history)) {
-            data.history.forEach(msg => {
-                addMessage(msg.content, msg.role);
-            });
-        }
-
+        await loadHistory(chatBox, sessionId);
     } catch (e) {
         console.error("Failed to load history:", e);
     }

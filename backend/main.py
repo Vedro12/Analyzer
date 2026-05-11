@@ -12,7 +12,7 @@ from backend.collectors.collector import (
 )
 import aiohttp
 from fastapi.middleware.cors import CORSMiddleware
-from backend.redis_client import get_auth, get_data, get_history, set_auth, set_data, add_message, clear_auth, clear_data, clear_history 
+from backend.redis_client import get_auth, get_data, get_history_by_session, set_auth, set_data, add_message, clear_auth, clear_data, clear_history 
 from backend.helpers import validate_token_request, get_iam_token, check_folder_exists
 
 
@@ -45,7 +45,7 @@ def home():
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 @app.post("/ai-chat")
-def ai_chat(req: ChatMessage):
+def start_chat(req: ChatMessage):
     session_id = (req.session_id or "").strip()
     user_message = (req.message or "").strip()
 
@@ -61,7 +61,14 @@ def ai_chat(req: ChatMessage):
             "message": "Сообщение не может быть пустым"
         }
 
-    history = get_history(session_id)
+    raw_history = get_history_by_session(session_id)
+
+    history = [
+        {"role": msg["role"], "content": msg["content"]}
+        for msg in raw_history
+        if msg and msg.get("role") in ("user", "assistant")
+    ]
+
     data = get_data(session_id)
 
     answer = run_ai_chat(
@@ -73,7 +80,7 @@ def ai_chat(req: ChatMessage):
     add_message(session_id, "user", user_message)
     add_message(session_id, "assistant", answer)
 
-    updated_history = get_history(session_id)
+    updated_history = get_history_by_session(session_id)
 
     return {
         "status": "ok",
@@ -88,30 +95,43 @@ async def collect_info(req: SessionRequest):
     if not auth:
         return {
             "status": "error",
-            "message": "Сначала укажите OAuth-токен и идентификатор каталога"
+            "message": "Сначала сохраните корректный OAuth-токен и идентификатор каталога"
         }
 
     iam_token = auth["iam_token"]
     folder_id = auth["folder_id"]
 
-    compute_task = collect_all_compute_data(iam_token, folder_id)
-    s3_task = collect_all_s3_data(iam_token, folder_id)
-    vpc_task = collect_all_vpc_data(iam_token, folder_id)
+    try:
+        compute_task = collect_all_compute_data(iam_token, folder_id)
+        s3_task = collect_all_s3_data(iam_token, folder_id)
+        vpc_task = collect_all_vpc_data(iam_token, folder_id)
 
-    compute, s3, vpc = await asyncio.gather(
-        compute_task,
-        s3_task,
-        vpc_task
-    )
+        compute, s3, vpc = await asyncio.gather(
+            compute_task,
+            s3_task,
+            vpc_task
+        )
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Ошибка сбора данных: {str(e)}"
+        }
+
     data = {
         "compute": compute,
         "s3": s3,
         "vpc": vpc
     }
+
     set_data(req.session_id, data)
+
+    message = "Данные инфраструктуры собраны"
+    add_message(req.session_id, "system", message)
+
     return {
         "status": "ok",
-        "message": "Данные инфраструктуры собраны",
+        "message": message,
         "data": data
     }
 
@@ -124,17 +144,32 @@ async def set_token(req: TokenRequest):
 
         error = validate_token_request(token, folder_id, session_id)
         if error:
-            return {"status": "error", "message": error}
+            if session_id:
+                clear_auth(session_id)
+                clear_data(session_id)
+
+            return {
+                "status": "error",
+                "message": error
+            }
 
         iam_token = await get_iam_token(token)
+
         if not iam_token:
+            clear_auth(session_id)
+            clear_data(session_id)
+
             return {
                 "status": "error",
                 "message": "Невалидный OAuth-токен"
             }
 
         folder_ok = await check_folder_exists(iam_token, folder_id)
+
         if not folder_ok:
+            clear_auth(session_id)
+            clear_data(session_id)
+
             return {
                 "status": "error",
                 "message": "Каталог с указанным идентификатором не найден. Пожалуйста, проверьте корректность идентификатора"
@@ -142,18 +177,29 @@ async def set_token(req: TokenRequest):
 
         set_auth(session_id, iam_token, folder_id)
 
+        message = "Токен успешно установлен"
+        add_message(session_id, "system", message)
+
         return {
             "status": "ok",
-            "message": "Токен успешно установлен"
+            "message": message
         }
 
     except asyncio.TimeoutError:
+        if req.session_id:
+            clear_auth(req.session_id)
+            clear_data(req.session_id)
+
         return {
             "status": "error",
             "message": "Таймаут при установке токена"
         }
 
     except Exception as e:
+        if req.session_id:
+            clear_auth(req.session_id)
+            clear_data(req.session_id)
+
         return {
             "status": "error",
             "message": f"Ошибка: {str(e)}"
@@ -173,13 +219,16 @@ def clear_all(req: SessionRequest):
     clear_data(session_id)
     clear_auth(session_id)
 
+    message = "Сессия, токен, история и данные очищены"
+    add_message(session_id, "system", message)
+
     return {
         "status": "cleared",
-        "message": "Сессия, токен, история и данные очищены"
+        "message": message
     }
 
 @app.post("/history")
-def get_history_endpoint(req: SessionRequest):
+def get_history(req: SessionRequest):
     session_id = (req.session_id or "").strip()
 
     if not session_id:
@@ -188,7 +237,7 @@ def get_history_endpoint(req: SessionRequest):
             "message": "Не найден ID сессии"
         }
 
-    history = get_history(session_id)
+    history = get_history_by_session(session_id)
 
     return {
         "status": "ok",
